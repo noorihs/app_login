@@ -7,6 +7,7 @@ import '../widgets/custom_text_field.dart';
 import '../widgets/gradient_button.dart';
 import '../theme/app_theme.dart';
 import 'signup_screen.dart';
+import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -227,13 +228,12 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
+    final prefs = await SharedPreferences.getInstance();
     if (_rememberMe) {
-      final prefs = await SharedPreferences.getInstance();
       prefs.setString('email', _emailController.text.trim());
       prefs.setString('password', _passwordController.text.trim());
       prefs.setBool('rememberMe', _rememberMe);
     } else {
-      final prefs = await SharedPreferences.getInstance();
       prefs.remove('email');
       prefs.remove('password');
       prefs.setBool('rememberMe', _rememberMe);
@@ -256,6 +256,12 @@ class _LoginScreenState extends State<LoginScreen> {
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.BOTTOM,
         );
+      } else {
+        // Connexion réussie → redirection vers la page d'accueil
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => HomeScreen()), // Remplacez HomePage par le widget de votre page d'accueil
+        );
       }
     } catch (e) {
       setState(() {
@@ -269,6 +275,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
   }
+
 
   void _forgotPassword() async {
     final email = _emailController.text.trim();

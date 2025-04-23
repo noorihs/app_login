@@ -1,12 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '/screens/login_screen.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   User? get currentUser => _auth.currentUser;
 
-  // Méthode de connexion
+  // Connexion (autorise même si l'e-mail n'est pas vérifié)
   Future<String?> signIn(String email, String password) async {
     try {
       await _auth.signInWithEmailAndPassword(
@@ -14,7 +15,7 @@ class AuthService extends ChangeNotifier {
         password: password,
       );
       notifyListeners();
-      return null; // Pas d'erreur
+      return null; // Connexion réussie
     } on FirebaseAuthException catch (e) {
       return e.message ?? "Erreur d'authentification";
     } catch (e) {
@@ -22,23 +23,25 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // Méthode d'inscription sans Firestore
-  Future<String?> signUp(String email, String password, String name) async {
+  // Inscription avec envoi d'email de vérification (option de déconnexion après)
+  Future<String?> signUp(String email, String password, String name, {bool disconnectAfter = false}) async {
     try {
-      // Créer l'utilisateur
       UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // Mettre à jour le nom d'affichage
       await userCredential.user?.updateDisplayName(name);
 
-      // Envoyer l'email de vérification
+      // Envoi de l'email de vérification (informative uniquement)
       await userCredential.user?.sendEmailVerification();
 
+      if (disconnectAfter) {
+        await _auth.signOut(); // Déconnecter si nécessaire
+      }
+
       notifyListeners();
-      return null; // Pas d'erreur
+      return null;
     } on FirebaseAuthException catch (e) {
       return e.message ?? "Erreur d'enregistrement";
     } catch (e) {
@@ -46,12 +49,23 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  // Réinitialisation de mot de passe
   Future<void> resetPassword(String email) async {
     await _auth.sendPasswordResetEmail(email: email);
   }
 
-  Future<void> signOut() async {
+  // Déconnexion
+  Future<void> signOut(BuildContext context) async {
     await _auth.signOut();
     notifyListeners();
+
+    // Rediriger vers la page de connexion après déconnexion
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => LoginScreen()),
+    );
   }
 }
+// Rediriger vers la page de connexion après déconnexion
+
+

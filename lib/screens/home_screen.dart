@@ -80,8 +80,10 @@ class HomeScreen extends StatelessWidget {
                 GradientButton(
                   text: 'SE DÉCONNECTER',
                   onPressed: () {
-                    authService.signOut();
+                    authService.signOut(context);
+
                   },
+
                 ),
               ],
             ),
