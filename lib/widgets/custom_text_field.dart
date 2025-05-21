@@ -6,7 +6,7 @@ class CustomTextField extends StatelessWidget {
   final IconData prefixIcon;
   final bool obscureText;
   final TextEditingController controller;
-  final IconButton? suffixIcon;  // Made nullable with ?
+  final IconButton? suffixIcon;
 
   const CustomTextField({
     Key? key,
@@ -14,7 +14,7 @@ class CustomTextField extends StatelessWidget {
     required this.prefixIcon,
     this.obscureText = false,
     required this.controller,
-    this.suffixIcon,  // Now optional
+    this.suffixIcon,
   }) : super(key: key);
 
   @override
@@ -28,11 +28,8 @@ class CustomTextField extends StatelessWidget {
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: AppTheme.inputTextStyle.copyWith(color: Colors.white38),
-          prefixIcon: Icon(
-            prefixIcon,
-            color: Colors.white54,
-          ),
-          suffixIcon: suffixIcon,  // Will be null if not provided
+          prefixIcon: Icon(prefixIcon, color: Colors.white54),
+          suffixIcon: suffixIcon,
           border: UnderlineInputBorder(
             borderSide: BorderSide(color: Colors.white30),
           ),

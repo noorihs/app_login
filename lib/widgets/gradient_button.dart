@@ -4,19 +4,19 @@ import '../theme/app_theme.dart';
 class GradientButton extends StatelessWidget {
   final String text;
   final VoidCallback onPressed;
-  final double? width; // Nouveau paramètre ajouté
+  final double? width; // Facultatif : largeur personnalisée
 
   const GradientButton({
     Key? key,
     required this.text,
     required this.onPressed,
-    this.width, // Ajout au constructeur
+    this.width,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: width ?? double.infinity, // Utilisation du paramètre width avec fallback
+      width: width ?? double.infinity, // Par défaut : occupe toute la largeur
       height: 50,
       margin: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
@@ -35,15 +35,23 @@ class GradientButton extends StatelessWidget {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
           shadowColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(25),
           ),
+          padding: EdgeInsets.zero, // Important : empêche le padding de masquer le gradient
         ),
-        child: Text(
-          text,
-          style: AppTheme.buttonTextStyle,
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: AppTheme.buttonGradient,
+            borderRadius: BorderRadius.circular(25),
+          ),
+          child: Center(
+            child: Text(
+              text,
+              style: AppTheme.buttonTextStyle,
+            ),
+          ),
         ),
       ),
     );

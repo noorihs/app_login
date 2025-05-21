@@ -1,10 +1,15 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:email_validator/email_validator.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import '../../services/auth_service.dart';
-import '../../widgets/gradient_button.dart';
-import '../../theme/app_theme.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide Provider;
+
+import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/custom_text_field.dart';
+import '../widgets/gradient_button.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -16,164 +21,199 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
-  bool _isLoading = false;
+  final picker = ImagePicker();
+
   bool _obscurePassword = true;
+  bool _isLoading = false;
+  File? _image;
+
+  Future<void> _pickImage(ImageSource source) async {
+    final picked = await picker.pickImage(source: source, imageQuality: 70);
+    if (picked != null) setState(() => _image = File(picked.path));
+  }
+
+
+  Future<void> _signUp() async {
+    if (!_validateInputs()) return;
+
+    setState(() => _isLoading = true);
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    try {
+      final result = await authService.signUp(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+        _nameController.text.trim(),
+      );
+
+      if (result != null) {
+        Fluttertoast.showToast(msg: result);
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // 🔁 Attendre que la session soit stabilisée
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (_image != null && user != null) {
+        final fileName = 'face_${user.id}.jpg'; // ✅ correction ici
+        final bytes = await _image!.readAsBytes();
+
+        try {
+          final response = await supabase.storage.from('faces').uploadBinary(
+            fileName,
+            bytes,
+            fileOptions: const FileOptions(
+              upsert: true,
+              contentType: 'image/jpeg',
+            ),
+          );
+
+          if (response.isEmpty) {
+            throw Exception("Échec de l'envoi de la photo");
+          }
+
+          final publicUrl = supabase.storage.from('faces').getPublicUrl(fileName);
+          await supabase.from('users').update({
+            'photo_url': publicUrl,
+          }).eq('id', user.id);
+
+          print("✅ Photo enregistrée et URL ajoutée à la table `users`");
+        } catch (e) {
+          print("❌ Erreur Supabase Storage : $e");
+          Fluttertoast.showToast(msg: "Erreur lors de l'upload de la photo : ${e.toString()}");
+          return;
+        }
+      } else {
+        print("⚠️ Aucun utilisateur connecté ou image manquante");
+      }
+
+      Fluttertoast.showToast(msg: "Inscription réussie !");
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
+    } catch (e) {
+      print("❌ Erreur lors de l'inscription: $e");
+      Fluttertoast.showToast(msg: "Erreur: ${e.toString()}");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+
+
+
+  bool _validateInputs() {
+    if (_nameController.text.trim().isEmpty) {
+      Fluttertoast.showToast(msg: "Veuillez entrer votre nom");
+      return false;
+    }
+    if (!EmailValidator.validate(_emailController.text.trim())) {
+      Fluttertoast.showToast(msg: "Email invalide");
+      return false;
+    }
+    if (_passwordController.text.length < 6) {
+      Fluttertoast.showToast(msg: "Mot de passe trop court");
+      return false;
+    }
+    if (_image == null) {
+      Fluttertoast.showToast(msg: "Veuillez ajouter une photo pour la reconnaissance faciale");
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-
     return Scaffold(
       body: Container(
+        decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
         width: double.infinity,
         height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
         child: Center(
           child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(
-              horizontal: mediaQuery.size.width * 0.05,
-              vertical: 20,
-            ),
+            padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.05),
             child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 500,
-                minHeight: mediaQuery.size.height * 0.7,
-              ),
+              constraints: const BoxConstraints(maxWidth: 500),
               child: Card(
                 elevation: 8,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
                 color: Colors.black26,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24.0,
-                    vertical: 32.0,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(height: 16),
-
-                      // Name field
-                      TextFormField(
+                      Text("Create an account", style: AppTheme.headingStyle),
+                      const SizedBox(height: 16),
+                      CustomTextField(
+                        hintText: 'Full name',
+                        prefixIcon: Icons.person,
                         controller: _nameController,
-                        style: AppTheme.inputTextStyle,
-                        decoration: InputDecoration(
-                          contentPadding: EdgeInsets.symmetric(
-                            vertical: 14,
-                            horizontal: 16,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white12,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
-                          ),
-                          hintText: 'Nom complet',
-                          hintStyle: AppTheme.inputTextStyle,
-                          prefixIcon: Icon(
-                            Icons.person_outline,
-                            color: Colors.white70,
-                          ),
-                        ),
                       ),
-
-                      SizedBox(height: 16),
-
-                      // Email field
-                      TextFormField(
+                      CustomTextField(
+                        hintText: 'Email',
+                        prefixIcon: Icons.email,
                         controller: _emailController,
-                        style: AppTheme.inputTextStyle,
-                        decoration: InputDecoration(
-                          contentPadding: EdgeInsets.symmetric(
-                            vertical: 14,
-                            horizontal: 16,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white12,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
-                          ),
-                          hintText: 'Email',
-                          hintStyle: AppTheme.inputTextStyle,
-                          prefixIcon: Icon(
-                            Icons.email_outlined,
-                            color: Colors.white70,
-                          ),
-                        ),
                       ),
-
-                      SizedBox(height: 16),
-
-                      // Password field with eye icon
-                      TextFormField(
+                      CustomTextField(
+                        hintText: 'Password',
+                        prefixIcon: Icons.lock,
                         controller: _passwordController,
                         obscureText: _obscurePassword,
-                        style: AppTheme.inputTextStyle,
-                        decoration: InputDecoration(
-                          contentPadding: EdgeInsets.symmetric(
-                            vertical: 14,
-                            horizontal: 16,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                            color: Colors.white54,
                           ),
-                          filled: true,
-                          fillColor: Colors.white12,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
-                          ),
-                          hintText: 'Mot de passe',
-                          hintStyle: AppTheme.inputTextStyle,
-                          prefixIcon: Icon(
-                            Icons.lock_outline,
-                            color: Colors.white70,
-                          ),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                              color: Colors.white70,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
+                          onPressed: () {
+                            setState(() => _obscurePassword = !_obscurePassword);
+                          },
                         ),
                       ),
-
-                      SizedBox(height: 24),
-
-                      // Sign up button
+                      const SizedBox(height: 16),
+                      if (_image != null)
+                        CircleAvatar(radius: 50, backgroundImage: FileImage(_image!)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => _pickImage(ImageSource.gallery),
+                            icon: const Icon(Icons.photo_library, color: Colors.white54),
+                            label: const Text("Galerie", style: TextStyle(color: Colors.white70)),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _pickImage(ImageSource.camera),
+                            icon: const Icon(Icons.camera_alt, color: Colors.white54),
+                            label: const Text("Camera", style: TextStyle(color: Colors.white70)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "This pic is going to be used for Face ID",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontStyle: FontStyle.italic,
+                          color: Colors.white60,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       _isLoading
-                          ? CircularProgressIndicator(color: Colors.white)
+                          ? const CircularProgressIndicator(color: Colors.white)
                           : GradientButton(
-                        text: 'S\'INSCRIRE',
+                        text: "Sign up",
                         onPressed: _signUp,
                       ),
-
-                      SizedBox(height: 16),
-
-                      // Login link
                       TextButton(
-                        onPressed: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (_) => LoginScreen()),
-                          );
-                        },
-                        child: Text(
-                          'Déjà un compte? Se connecter',
-                          style: AppTheme.inputTextStyle.copyWith(
-                            decoration: TextDecoration.underline,
-                          ),
+                        onPressed: () => Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => LoginScreen()),
                         ),
+                        child: Text("Have an account ? Login", style: AppTheme.linkStyle),
                       ),
                     ],
                   ),
@@ -184,84 +224,5 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
       ),
     );
-  }
-
-  void _signUp() async {
-    if (!_validateInputs()) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    final authService = Provider.of<AuthService>(context, listen: false);
-
-    try {
-      final result = await authService.signUp(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-        _nameController.text.trim(),
-      );
-
-      await Future.delayed(Duration(milliseconds: 500));
-
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      if (result == null) {
-        Fluttertoast.showToast(
-          msg: "Inscription réussie! Un e-mail de vérification a été envoyé à votre adresse.",
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
-        );
-
-        Future.microtask(() {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => LoginScreen()),
-                (route) => false,
-          );
-        });
-      } else {
-        Fluttertoast.showToast(
-          msg: result,
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-
-        Fluttertoast.showToast(
-          msg: "Une erreur s'est produite: ${e.toString()}",
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
-        );
-      }
-    }
-  }
-
-  bool _validateInputs() {
-    if (_nameController.text.isEmpty) {
-      Fluttertoast.showToast(msg: "Veuillez entrer votre nom");
-      return false;
-    }
-
-    if (!EmailValidator.validate(_emailController.text.trim())) {
-      Fluttertoast.showToast(msg: "Email invalide");
-      return false;
-    }
-
-    if (_passwordController.text.length < 6) {
-      Fluttertoast.showToast(msg: "Le mot de passe doit contenir au moins 6 caractères");
-      return false;
-    }
-
-    return true;
   }
 }

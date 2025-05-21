@@ -1,71 +1,140 @@
-import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:flutter/material.dart';
-import '/screens/login_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../screens/login_screen.dart';
 
 class AuthService extends ChangeNotifier {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  User? get currentUser => _auth.currentUser;
+  Session? get currentSession => _supabase.auth.currentSession;
+  User? get currentUser => _supabase.auth.currentUser;
 
-  // Connexion (autorise même si l'e-mail n'est pas vérifié)
   Future<String?> signIn(String email, String password) async {
     try {
-      await _auth.signInWithEmailAndPassword(
+      final response = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
+      if (response.user == null) return "Échec de la connexion";
       notifyListeners();
-      return null; // Connexion réussie
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "Erreur d'authentification";
+      return null;
     } catch (e) {
-      return e.toString();
+      return "Erreur de connexion : ${e.toString()}";
     }
   }
 
-  // Inscription avec envoi d'email de vérification (option de déconnexion après)
-  Future<String?> signUp(String email, String password, String name, {bool disconnectAfter = false}) async {
+
+  Future<String?> signUp(String email, String password, String fullName) async {
     try {
-      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+      final response = await _supabase.auth.signUp(
         email: email,
         password: password,
+        data: {'full_name': fullName},
       );
 
-      await userCredential.user?.updateDisplayName(name);
-
-      // Envoi de l'email de vérification (informative uniquement)
-      await userCredential.user?.sendEmailVerification();
-
-      if (disconnectAfter) {
-        await _auth.signOut(); // Déconnecter si nécessaire
+      if (response.user == null) {
+        return "Erreur lors de la création du compte.";
       }
+
+      final userId = response.user!.id;
+
+      final existing = await _supabase
+          .from('users')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (existing == null) {
+        await _supabase.from('users').insert({
+          'id': userId,
+          'email': email,
+          'full_name': fullName,
+          'photo_url': '',
+        });
+      }
+
+
 
       notifyListeners();
       return null;
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "Erreur d'enregistrement";
     } catch (e) {
-      return e.toString();
+      if (e.toString().contains("email") && e.toString().contains("exists")) {
+        return "Cette adresse email est déjà utilisée.";
+      }
+      return "Erreur inattendue : ${e.toString()}";
     }
   }
 
-  // Réinitialisation de mot de passe
-  Future<void> resetPassword(String email) async {
-    await _auth.sendPasswordResetEmail(email: email);
+
+
+  Future<String?> updateProfilePhoto(String photoUrl) async {
+    try {
+      final userId = currentUser?.id;
+      if (userId == null) return "Utilisateur non connecté";
+
+      await _supabase
+          .from('users')
+          .update({'photo_url': photoUrl})
+          .eq('id', userId);
+
+      return null;
+    } catch (e) {
+      return "Erreur de mise à jour : ${e.toString()}";
+    }
   }
 
-  // Déconnexion
-  Future<void> signOut(BuildContext context) async {
-    await _auth.signOut();
-    notifyListeners();
+  Future<Map<String, dynamic>?> getUserInfo() async {
+    try {
+      final userId = currentUser?.id;
+      if (userId == null) return null;
 
-    // Rediriger vers la page de connexion après déconnexion
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => LoginScreen()),
-    );
+      final userData = await _supabase
+          .from('users')
+          .select('id, email, full_name, photo_url')
+          .eq('id', userId)
+          .single();
+
+      return userData;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<void> signOut(BuildContext context) async {
+    try {
+      await _supabase.auth.signOut();
+      notifyListeners();
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => LoginScreen()),
+            (_) => false,
+      );
+    } catch (e) {
+      print("❌ Erreur lors de la déconnexion : $e");
+    }
+  }
+
+  Future<String?> resetPassword(String email) async {
+    try {
+      await _supabase.auth.resetPasswordForEmail(email);
+      return null;
+    } catch (e) {
+      return "Erreur lors de la réinitialisation : ${e.toString()}";
+    }
+  }
+
+
+Future<Map<String, dynamic>?> getUserInfoByEmail(String email) async {
+  try {
+    final data = await _supabase
+        .from('users')
+        .select('id, email, full_name, photo_url')
+        .eq('email', email)
+        .single();
+
+    return data;
+  } catch (e) {
+    return null;
   }
 }
-// Rediriger vers la page de connexion après déconnexion
-
-
+}
